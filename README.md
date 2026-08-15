@@ -1,3 +1,6 @@
+> **[Darask Paint](https://github.com/daraskme/darask-paint) 用プラグインとして使う場合は [README_darask.md](README_darask.md) を参照してください。**
+> このフォークは Krita 版に加えて、Darask Paint 向けのヘッドレス API サーバ (`darask_server.py`) を提供します。
+
 <h1><img width="64px" src="ai_diffusion/icons/logo-128.png"> Generative AI <i>for Krita</i></h1>
 
 ✨[Features](#features) | ⭳ [Download](https://github.com/Acly/krita-ai-diffusion/releases/latest) | 🛠️[Installation](https://docs.interstice.cloud/installation) | 🎞️ [Video](https://youtu.be/Ly6USRwTHe0) | 🖼️[Gallery](#gallery) | 📖[User Guide](https://docs.interstice.cloud) | 💬[Discussion](https://github.com/Acly/krita-ai-diffusion/discussions) | 🗣️[Discord](https://discord.gg/pWyzHfHHhU)

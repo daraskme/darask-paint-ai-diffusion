@@ -1,0 +1,22 @@
+{
+  "name": "ai-diffusion",
+  "displayName": "AI Diffusion(生成・置換)",
+  "description": "darask-paint から ComfyUI 経由で画像生成・選択範囲の生成置換を行うローカルプラグイン",
+  "apiVersion": 1,
+  "protocol": "http",
+  "host": "127.0.0.1",
+  "port": 8424,
+  "endpoints": {
+    "health": "/api/v1/health",
+    "generate": "/api/v1/generate",
+    "inpaint": "/api/v1/inpaint"
+  },
+  "launcher": "darask-plugin.bat",
+  "engine": {
+    "repository": "https://github.com/daraskme/darask-paint-ai-diffusion",
+    "upstream": "https://github.com/Acly/krita-ai-diffusion",
+    "runtime": "https://github.com/comfyanonymous/ComfyUI",
+    "license": "GPL-3.0"
+  },
+  "license": "GPL-3.0"
+}
