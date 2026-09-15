@@ -42,6 +42,7 @@ import argparse
 import atexit
 import base64
 import binascii
+import io
 import json
 import logging
 import math
@@ -62,6 +63,16 @@ from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
+
+# Optional acceleration for the PNG codec below. Pillow ships with every
+# ComfyUI environment (darask-plugin.bat runs this file with ComfyUI's venv
+# python), but it is *not* required: the pure-stdlib implementation is the
+# reference and remains the fallback so the server still runs on a bare
+# Python install (as do the unit tests).
+try:
+    from PIL import Image as _PILImage
+except ImportError:  # pragma: no cover - depends on the environment
+    _PILImage = None
 
 # --------------------------------------------------------------------------
 # Constants
@@ -124,10 +135,19 @@ def strict_json_loads(text: str) -> Any:
 # and from ComfyUI's SaveImage node: 8-bit depth, non-interlaced, color
 # types 0 (gray), 2 (RGB), 4 (gray+alpha), 6 (RGBA). Palette images (color
 # type 3) and interlaced images are rejected with a clear error.
+#
+# Header validation (signature/IHDR/bit depth/color type/interlace) is always
+# done by the stdlib code so the accepted input set does not depend on
+# whether Pillow is present. Only the pixel work (un-filtering on decode,
+# filtering + deflate on encode) is delegated to Pillow when it is importable:
+# the pure-Python per-byte un-filter loop costs ~1.3 s for a 1024x1024 RGBA
+# photo (ComfyUI output) versus ~0.03 s in Pillow, and that cost is paid on
+# every generate/inpaint whose size is not a multiple of 8.
 # --------------------------------------------------------------------------
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _PNG_CHANNELS = {0: 1, 2: 3, 4: 2, 6: 4}
+_PNG_PIL_MODES = {0: "L", 2: "RGB", 4: "LA", 6: "RGBA"}
 
 
 class PngError(Exception):
@@ -191,6 +211,10 @@ def png_decode(data: bytes) -> tuple[int, int, int, bytearray]:
     if not idat:
         raise PngError("PNG has no image data")
 
+    fast = _png_decode_pixels_pil(data, width, height, color_type)
+    if fast is not None:
+        return width, height, color_type, fast
+
     try:
         raw = zlib.decompress(bytes(idat))
     except zlib.error as e:
@@ -214,6 +238,32 @@ def png_decode(data: bytes) -> tuple[int, int, int, bytearray]:
         out[row * stride : (row + 1) * stride] = cur
         prev_row = cur
     return width, height, color_type, out
+
+
+def _png_decode_pixels_pil(
+    data: bytes, width: int, height: int, color_type: int
+) -> bytearray | None:
+    """Un-filter the scanlines of an already header-validated PNG with Pillow.
+
+    Returns None (caller falls back to the stdlib path, which then reports the
+    precise error) when Pillow is unavailable, cannot decode the data, or
+    yields anything other than the exact 8-bit mode/size implied by the IHDR.
+    """
+    if _PILImage is None:
+        return None
+    mode = _PNG_PIL_MODES.get(color_type)
+    if mode is None:
+        return None
+    try:
+        with _PILImage.open(io.BytesIO(data), formats=["PNG"]) as img:
+            if img.mode != mode or img.size != (width, height):
+                return None
+            pixels = img.tobytes()
+    except Exception:
+        return None
+    if len(pixels) != width * height * _PNG_CHANNELS[color_type]:
+        return None
+    return bytearray(pixels)
 
 
 def _png_unfilter_row(filter_type: int, cur: bytearray, prev: bytearray, bpp: int) -> None:
@@ -252,6 +302,10 @@ def png_encode(width: int, height: int, color_type: int, raw: bytes | bytearray)
     if len(raw) != stride * height:
         raise PngError("Raw pixel buffer size does not match width/height/color_type")
 
+    fast = _png_encode_pil(width, height, color_type, raw)
+    if fast is not None:
+        return fast
+
     filtered = bytearray((stride + 1) * height)
     for row in range(height):
         src_off = row * stride
@@ -273,6 +327,26 @@ def png_encode(width: int, height: int, color_type: int, raw: bytes | bytearray)
     return PNG_SIGNATURE + chunk(b"IHDR", ihdr) + chunk(b"IDAT", compressed) + chunk(b"IEND", b"")
 
 
+def _png_encode_pil(
+    width: int, height: int, color_type: int, raw: bytes | bytearray
+) -> bytes | None:
+    """Encode validated raw scanlines with Pillow (8-bit, non-interlaced, same
+    color type as the stdlib encoder). Returns None to fall back to the stdlib
+    encoder when Pillow is unavailable or fails."""
+    if _PILImage is None:
+        return None
+    mode = _PNG_PIL_MODES.get(color_type)
+    if mode is None:
+        return None
+    try:
+        img = _PILImage.frombuffer(mode, (width, height), bytes(raw), "raw", mode, 0, 1)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", compress_level=6)
+    except Exception:
+        return None
+    return buf.getvalue()
+
+
 def png_pad_to(data: bytes, target_w: int, target_h: int) -> bytes:
     """Decode, edge-extend-pad (right/bottom only) to target size, re-encode."""
     width, height, color_type, raw = png_decode(data)
@@ -290,11 +364,8 @@ def png_pad_to(data: bytes, target_w: int, target_h: int) -> bytes:
         dst_off = row * dst_stride
         out[dst_off : dst_off + src_stride] = raw[src_off : src_off + src_stride]
         if target_w > width:
-            last_pixel = raw[src_off + src_stride - channels : src_off + src_stride]
-            fill_start = dst_off + src_stride
-            for _x in range(width, target_w):
-                out[fill_start : fill_start + channels] = last_pixel
-                fill_start += channels
+            last_pixel = bytes(raw[src_off + src_stride - channels : src_off + src_stride])
+            out[dst_off + src_stride : dst_off + dst_stride] = last_pixel * (target_w - width)
     if target_h > height:
         last_row = out[(height - 1) * dst_stride : height * dst_stride]
         for row in range(height, target_h):
