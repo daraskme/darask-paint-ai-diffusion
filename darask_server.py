@@ -162,11 +162,12 @@ def png_dimensions(data: bytes) -> tuple[int, int]:
     return width, height
 
 
-def _png_read_chunks(data: bytes) -> list[tuple[bytes, bytes]]:
+def _png_read_chunks(data: bytes) -> list[tuple[bytes, memoryview]]:
     if len(data) < 8 or data[:8] != PNG_SIGNATURE:
         raise PngError("Not a valid PNG file (bad signature)")
     pos = 8
     chunks = []
+    view = memoryview(data)
     n = len(data)
     while pos + 8 <= n:
         length = struct.unpack(">I", data[pos : pos + 4])[0]
@@ -175,7 +176,7 @@ def _png_read_chunks(data: bytes) -> list[tuple[bytes, bytes]]:
         end = start + length
         if end + 4 > n:
             raise PngError("Truncated PNG chunk")
-        chunks.append((tag, data[start:end]))
+        chunks.append((tag, view[start:end]))
         pos = end + 4  # skip CRC
         if tag == b"IEND":
             break
@@ -204,11 +205,11 @@ def png_decode(data: bytes) -> tuple[int, int, int, bytearray]:
     if interlace != 0:
         raise PngError("Interlaced PNG images are not supported")
 
-    idat = bytearray()
+    idat: list[memoryview] = []
     for tag, payload in chunks:
         if tag == b"IDAT":
-            idat.extend(payload)
-    if not idat:
+            idat.append(payload)
+    if not any(idat):
         raise PngError("PNG has no image data")
 
     fast = _png_decode_pixels_pil(data, width, height, color_type)
@@ -216,7 +217,7 @@ def png_decode(data: bytes) -> tuple[int, int, int, bytearray]:
         return width, height, color_type, fast
 
     try:
-        raw = zlib.decompress(bytes(idat))
+        raw = zlib.decompress(idat[0] if len(idat) == 1 else b"".join(idat))
     except zlib.error as e:
         raise PngError(f"Failed to inflate PNG image data: {e}") from e
 
@@ -228,11 +229,12 @@ def png_decode(data: bytes) -> tuple[int, int, int, bytearray]:
 
     out = bytearray(stride * height)
     prev_row = bytearray(stride)
+    raw_view = memoryview(raw)
     pos = 0
     for row in range(height):
         filter_type = raw[pos]
         pos += 1
-        cur = bytearray(raw[pos : pos + stride])
+        cur = bytearray(raw_view[pos : pos + stride])
         pos += stride
         _png_unfilter_row(filter_type, cur, prev_row, bpp)
         out[row * stride : (row + 1) * stride] = cur
@@ -313,7 +315,7 @@ def png_encode(width: int, height: int, color_type: int, raw: bytes | bytearray)
         filtered[dst_off] = 0  # filter type: None
         filtered[dst_off + 1 : dst_off + 1 + stride] = raw[src_off : src_off + stride]
 
-    compressed = zlib.compress(bytes(filtered), 6)
+    compressed = zlib.compress(filtered, 6)
 
     def chunk(tag: bytes, payload: bytes) -> bytes:
         return (

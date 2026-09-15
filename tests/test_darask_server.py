@@ -29,6 +29,7 @@ import unittest
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -705,6 +706,59 @@ class CheckpointTests(ServerTestCase):
 
 
 class PngCodecTests(unittest.TestCase):
+    @staticmethod
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + tag
+            + payload
+            + struct.pack(">I", zlib.crc32(tag + payload))
+        )
+
+    def test_split_idat_decodes_identically_with_and_without_pillow(self):
+        for color_type, channels in ds._PNG_CHANNELS.items():
+            raw = bytes(range(6 * channels))
+            stride = 3 * channels
+            compressed = zlib.compress(b"\0" + raw[:stride] + b"\0" + raw[stride:])
+            header = self.chunk(b"IHDR", struct.pack(">IIBBBBB", 3, 2, 8, color_type, 0, 0, 0))
+            for parts in ([compressed], [b"", compressed[:3], compressed[3:], b""]):
+                data = (
+                    ds.PNG_SIGNATURE
+                    + header
+                    + self.chunk(b"tEXt", b"Comment\0test")
+                    + b"".join(self.chunk(b"IDAT", part) for part in parts)
+                    + self.chunk(b"IEND", b"")
+                )
+                for backend in (ds._PILImage, None):
+                    with (
+                        self.subTest(
+                            color_type=color_type, parts=len(parts), pillow=backend is not None
+                        ),
+                        patch.object(ds, "_PILImage", backend),
+                    ):
+                        self.assertEqual(ds.png_decode(data), (3, 2, color_type, bytearray(raw)))
+
+    def test_invalid_chunks_are_rejected_before_pixel_decode(self):
+        header = self.chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+        invalid = [
+            ds.PNG_SIGNATURE + header,
+            ds.PNG_SIGNATURE + header + self.chunk(b"IDAT", b""),
+            ds.PNG_SIGNATURE + header + self.chunk(b"IDAT", b"broken")[:-1],
+            ds.PNG_SIGNATURE + self.chunk(b"IDAT", b"broken"),
+            ds.PNG_SIGNATURE + self.chunk(b"IHDR", b"short"),
+        ]
+        for data in invalid:
+            with self.subTest(data=data), patch.object(ds, "_png_decode_pixels_pil") as decode:
+                with self.assertRaises(ds.PngError):
+                    ds.png_decode(data)
+                decode.assert_not_called()
+
+    def test_chunk_payloads_share_the_input_buffer(self):
+        data = make_png(3, 2)
+        for _, payload in ds._png_read_chunks(data):
+            self.assertIs(payload.obj, data)
+            self.assertTrue(payload.readonly)
+
     def test_pad_then_crop_round_trip_rgb(self):
         original = make_png(13, 9)
         padded = ds.png_pad_to(original, 16, 16)
