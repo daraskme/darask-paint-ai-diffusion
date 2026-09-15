@@ -17,7 +17,9 @@ error/security conditions.
 from __future__ import annotations
 
 import base64
+import io
 import json
+import random
 import socket
 import struct
 import sys
@@ -738,6 +740,49 @@ class PngCodecTests(unittest.TestCase):
     def test_reject_garbage(self):
         with self.assertRaises(ds.PngError):
             ds.png_decode(b"not a png at all")
+
+    @unittest.skipIf(
+        ds._PILImage is None, "Pillow not installed; only the stdlib codec path exists"
+    )
+    def test_pillow_and_stdlib_codecs_agree(self):
+        # Every color type, every PNG filter type: the accelerated decoder must
+        # yield the exact same raw scanlines as the reference stdlib decoder,
+        # and the accelerated encoder's output must decode (via stdlib) back to
+        # the input. Pillow's own encoder picks filters adaptively, so encode
+        # through it to obtain filtered (non-type-0) scanlines to decode.
+        from PIL import Image
+
+        w, h = 37, 23
+        rng = random.Random(1234)
+        for color_type, mode in ds._PNG_PIL_MODES.items():
+            channels = ds._PNG_CHANNELS[color_type]
+            # gradient + noise so the adaptive filter chooser exercises several filters
+            raw = bytes(
+                ((x * 7 + y * 3 + rng.randint(0, 40)) & 0xFF)
+                for y in range(h)
+                for x in range(w * channels)
+            )
+            buf = io.BytesIO()
+            Image.frombytes(mode, (w, h), raw).save(buf, format="PNG", compress_level=9)
+            filtered_png = buf.getvalue()
+            fast = ds.png_decode(filtered_png)
+            saved = ds._PILImage
+            try:
+                ds._PILImage = None
+                reference = ds.png_decode(filtered_png)
+                encoded_by_stdlib = ds.png_encode(w, h, color_type, raw)
+            finally:
+                ds._PILImage = saved
+            self.assertEqual(fast, reference, f"decode mismatch for color type {color_type}")
+            self.assertEqual(fast[3], raw)
+            encoded_by_pil = ds.png_encode(w, h, color_type, raw)
+            self.assertEqual(ds.png_decode(encoded_by_pil), ds.png_decode(encoded_by_stdlib))
+            self.assertEqual(ds.png_dimensions(encoded_by_pil), (w, h))
+
+    def test_pad_extends_right_and_bottom_edges(self):
+        raw = bytes([1, 2, 3, 4, 5, 6])  # 2x1 RGB: (1,2,3) (4,5,6)
+        padded = ds.png_decode(ds.png_pad_to(ds.png_encode(2, 1, 2, raw), 4, 2))[3]
+        self.assertEqual(bytes(padded), bytes([1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6]) * 2)
 
     def test_next_multiple_of_8(self):
         self.assertEqual(ds.next_multiple_of_8(1), 8)
