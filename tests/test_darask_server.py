@@ -29,6 +29,7 @@ import unittest
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
@@ -95,7 +96,7 @@ def _extent_from_graph(graph: dict, state: ComfyState) -> tuple[int, int]:
 class MockComfyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
     @property
@@ -116,9 +117,11 @@ class MockComfyHandler(BaseHTTPRequestHandler):
         if parsed.path == "/system_stats":
             self._json({"system": {"comfyui_version": st.comfy_version}})
         elif parsed.path == "/object_info/CheckpointLoaderSimple":
-            self._json(
-                {"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [list(st.checkpoints)]}}}}
-            )
+            self._json({
+                "CheckpointLoaderSimple": {
+                    "input": {"required": {"ckpt_name": [list(st.checkpoints)]}}
+                }
+            })
         elif parsed.path.startswith("/history/"):
             if st.malformed_history:
                 body = b"{not valid json"
@@ -136,18 +139,18 @@ class MockComfyHandler(BaseHTTPRequestHandler):
             if time.monotonic() < job["ready_at"]:
                 self._json({})
                 return
-            self._json(
-                {
-                    prompt_id: {
-                        "status": {"status_str": "success", "completed": True, "messages": []},
-                        "outputs": {
-                            job["output_node"]: {
-                                "images": [{"filename": job["filename"], "subfolder": "", "type": "output"}]
-                            }
-                        },
-                    }
+            self._json({
+                prompt_id: {
+                    "status": {"status_str": "success", "completed": True, "messages": []},
+                    "outputs": {
+                        job["output_node"]: {
+                            "images": [
+                                {"filename": job["filename"], "subfolder": "", "type": "output"}
+                            ]
+                        }
+                    },
                 }
-            )
+            })
         elif parsed.path == "/view":
             qs = parse_qs(parsed.query)
             filename = qs.get("filename", [""])[0]
@@ -291,7 +294,9 @@ class ServerTestCase(unittest.TestCase):
 
     # -- helpers -------------------------------------------------------
 
-    def request(self, method: str, path: str, body: dict | None = None, extra_headers: dict | None = None):
+    def request(
+        self, method: str, path: str, body: dict | None = None, extra_headers: dict | None = None
+    ):
         """Send a well-formed request using raw sockets (keeps full control
         without pulling in urllib's own header normalization surprises)."""
         headers = {
@@ -312,7 +317,9 @@ class ServerTestCase(unittest.TestCase):
         body_bytes = body_of(resp)
         return status, body_bytes
 
-    def request_json(self, method: str, path: str, body: dict | None = None, extra_headers: dict | None = None):
+    def request_json(
+        self, method: str, path: str, body: dict | None = None, extra_headers: dict | None = None
+    ) -> tuple[int, Any]:
         status, raw_body = self.request(method, path, body, extra_headers)
         try:
             return status, json.loads(raw_body.decode())
@@ -495,7 +502,9 @@ class ValidationTests(ServerTestCase):
     def test_generate_non_multiple_of_8_is_accepted(self):
         # This is the headline fix: arbitrary 1..8192 sizes must now be
         # accepted (padded internally, cropped back on the way out).
-        status, raw_body = self.request("POST", "/api/v1/generate", {"prompt": "x", "width": 65, "height": 61})
+        status, raw_body = self.request(
+            "POST", "/api/v1/generate", {"prompt": "x", "width": 65, "height": 61}
+        )
         self.assertEqual(status, 200)
         w, h = ds.png_dimensions(raw_body)
         self.assertEqual((w, h), (65, 61))
@@ -554,13 +563,17 @@ class ValidationTests(ServerTestCase):
 
 class PaddingRoundTripTests(ServerTestCase):
     def test_generate_odd_size_round_trip(self):
-        status, raw_body = self.request("POST", "/api/v1/generate", {"prompt": "a cat", "width": 61, "height": 67})
+        status, raw_body = self.request(
+            "POST", "/api/v1/generate", {"prompt": "a cat", "width": 61, "height": 67}
+        )
         self.assertEqual(status, 200)
         w, h = ds.png_dimensions(raw_body)
         self.assertEqual((w, h), (61, 67))
 
     def test_generate_already_aligned_size(self):
-        status, raw_body = self.request("POST", "/api/v1/generate", {"prompt": "a cat", "width": 64, "height": 64})
+        status, raw_body = self.request(
+            "POST", "/api/v1/generate", {"prompt": "a cat", "width": 64, "height": 64}
+        )
         self.assertEqual(status, 200)
         w, h = ds.png_dimensions(raw_body)
         self.assertEqual((w, h), (64, 64))
@@ -594,12 +607,16 @@ class PaddingRoundTripTests(ServerTestCase):
 class ComfyFailureTests(ServerTestCase):
     def test_comfy_5xx_on_prompt(self):
         self.comfy_state.comfy_5xx_on_prompt = True
-        status, _payload = self.request_json("POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64})
+        status, _payload = self.request_json(
+            "POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64}
+        )
         self.assertEqual(status, 502)
 
     def test_comfy_rejects_workflow(self):
         self.comfy_state.reject_prompt = True
-        status, _payload = self.request_json("POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64})
+        status, _payload = self.request_json(
+            "POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64}
+        )
         self.assertEqual(status, 502)
 
     def test_comfy_oversize_view_rejected(self):
@@ -616,7 +633,9 @@ class ComfyFailureTests(ServerTestCase):
 
     def test_comfy_malformed_history(self):
         self.comfy_state.malformed_history = True
-        status, _payload = self.request_json("POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64})
+        status, _payload = self.request_json(
+            "POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64}
+        )
         self.assertEqual(status, 502)
 
     def test_comfy_wrong_size_image_rejected(self):
@@ -636,7 +655,7 @@ class ComfyFailureTests(ServerTestCase):
             else:
                 real_history(handler_self)
 
-        MockComfyHandler.do_GET = patched_view
+        MockComfyHandler.do_GET = patched_view  # type: ignore[assignment]
         try:
             status, _payload = self.request_json(
                 "POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64}
@@ -647,7 +666,9 @@ class ComfyFailureTests(ServerTestCase):
 
     def test_no_checkpoint_installed(self):
         self.comfy_state.checkpoints = []
-        status, _payload = self.request_json("POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64})
+        status, _payload = self.request_json(
+            "POST", "/api/v1/generate", {"prompt": "x", "width": 64, "height": 64}
+        )
         self.assertEqual(status, 503)
 
 
@@ -787,7 +808,13 @@ class PngCodecTests(unittest.TestCase):
         ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 3, 0, 0, 0)
         plte = bytes([0, 0, 0])
         idat = zlib.compress(bytes([0, 0]))
-        data = ds.PNG_SIGNATURE + chunk(b"IHDR", ihdr) + chunk(b"PLTE", plte) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+        data = (
+            ds.PNG_SIGNATURE
+            + chunk(b"IHDR", ihdr)
+            + chunk(b"PLTE", plte)
+            + chunk(b"IDAT", idat)
+            + chunk(b"IEND", b"")
+        )
         with self.assertRaises(ds.PngError):
             ds.png_decode(data)
 
@@ -994,11 +1021,11 @@ class ConnectionLimitTests(unittest.TestCase):
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         time.sleep(0.05)
 
+        socks: list[socket.socket] = []
         try:
             # Open more raw connections than the semaphore allows and hold them
             # open without sending a full request; excess ones should be
             # actively closed by the server rather than accepted indefinitely.
-            socks = []
             for _ in range(5):
                 s = socket.create_connection(("127.0.0.1", port), timeout=3.0)
                 socks.append(s)
@@ -1014,7 +1041,9 @@ class ConnectionLimitTests(unittest.TestCase):
                 except (TimeoutError, ConnectionResetError, OSError):
                     closed_count += 1
 
-            self.assertGreaterEqual(closed_count, 1, "expected at least one excess connection to be turned away")
+            self.assertGreaterEqual(
+                closed_count, 1, "expected at least one excess connection to be turned away"
+            )
         finally:
             for s in socks:
                 try:
