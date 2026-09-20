@@ -56,6 +56,7 @@ import time
 import urllib.error
 import urllib.request
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -833,11 +834,13 @@ class ComfyManager:
         comfy_main: Path | None,
         comfy_port: int,
         log_file: Path | None,
+        extra_args: Sequence[str] = (),
     ):
         self.comfy_python = comfy_python
         self.comfy_main = comfy_main
         self.comfy_port = comfy_port
         self.log_file = log_file
+        self.extra_args = list(extra_args)
         self.process: subprocess.Popen | None = None
         self.start_time = time.monotonic()
         self._log_fp = None
@@ -861,7 +864,7 @@ class ComfyManager:
             log.error("ComfyUI main.py not found at %s; will not manage ComfyUI", self.comfy_main)
             return
 
-        args = [str(self.comfy_python), "-su", str(self.comfy_main), "--port", str(self.comfy_port)]
+        args = self.command_line()
         log.info("Starting ComfyUI: %s", " ".join(args))
         stdout = subprocess.DEVNULL
         if self.log_file is not None:
@@ -878,6 +881,17 @@ class ComfyManager:
             stdin=subprocess.DEVNULL,
         )
         self.start_time = time.monotonic()
+
+    def command_line(self) -> list[str]:
+        assert self.comfy_python is not None and self.comfy_main is not None
+        return [
+            str(self.comfy_python),
+            "-su",
+            str(self.comfy_main),
+            "--port",
+            str(self.comfy_port),
+            *self.extra_args,
+        ]
 
     def is_alive(self) -> bool:
         if self.process is None:
@@ -1344,6 +1358,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--comfy-log", type=Path, default=None, help="File to redirect the managed ComfyUI's output to"
     )
     parser.add_argument(
+        "--comfy-arg",
+        dest="comfy_args",
+        action="append",
+        default=[],
+        metavar="ARG",
+        help="Extra argument forwarded to the managed ComfyUI (repeatable), e.g. --comfy-arg=--cpu",
+    )
+    parser.add_argument(
         "--checkpoint",
         default=None,
         help="Exact checkpoint filename to require. If omitted, the first checkpoint in "
@@ -1386,7 +1408,9 @@ def main(argv: list[str] | None = None) -> NoReturn:
     if args.comfy_python and args.comfy_main:
         comfy_url = validate_comfy_url(f"http://127.0.0.1:{args.comfy_port}")
 
-    comfy_manager = ComfyManager(args.comfy_python, args.comfy_main, args.comfy_port, args.comfy_log)
+    comfy_manager = ComfyManager(
+        args.comfy_python, args.comfy_main, args.comfy_port, args.comfy_log, args.comfy_args
+    )
     comfy_client = ComfyClient(comfy_url)
 
     ctx = ServerContext(

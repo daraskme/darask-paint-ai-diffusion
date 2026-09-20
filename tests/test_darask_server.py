@@ -879,6 +879,20 @@ class ArgValidationTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             ds.parse_args(["--timeout", "-5"])
 
+    def test_comfy_args_default_to_empty(self):
+        self.assertEqual(ds.parse_args([]).comfy_args, [])
+
+    def test_comfy_args_are_forwarded_to_managed_comfyui(self):
+        args = ds.parse_args(["--comfy-arg=--cpu", "--comfy-arg=--lowvram", "--comfy-port", "8190"])
+        manager = ds.ComfyManager(
+            Path("py.exe"), Path("ComfyUI") / "main.py", args.comfy_port, None, args.comfy_args
+        )
+        main = str(Path("ComfyUI") / "main.py")
+        self.assertEqual(
+            manager.command_line(),
+            ["py.exe", "-su", main, "--port", "8190", "--cpu", "--lowvram"],
+        )
+
 
 # --------------------------------------------------------------------------
 # ComfyManager temp-file cleanup (item 10)

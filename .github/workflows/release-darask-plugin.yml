@@ -1,0 +1,39 @@
+name: Release darask-paint plugin zip
+
+# `plugin-v*` タグ push で darask-paint 用プラグイン zip を作り GitHub Release
+# に添付する。zip は darask-paint.exe と同じ階層の `plugins` フォルダ(または
+# 設定で指定したフォルダ)に置くだけで本体が展開・起動する。
+# (upstream の `v*` タグは Krita プラグインのリリースなので触らない。)
+
+on:
+  push:
+    tags:
+      - 'plugin-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Server tests
+        run: python -m unittest tests.test_darask_server -v
+
+      - name: Build plugin zip
+        shell: pwsh
+        run: |
+          $zip = ./scripts/package_darask_plugin.ps1 -Version "${{ github.ref_name }}"
+          "ZIP_PATH=$zip" >> $env:GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_PATH }}
+          generate_release_notes: true
