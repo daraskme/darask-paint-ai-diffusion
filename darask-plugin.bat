@@ -175,6 +175,16 @@ if not exist "%COMFY_MAIN%" (
     echo        %APPDIR% and run this script again to reinstall.
     goto :fail
 )
+REM ComfyUI defaults to CUDA and aborts at startup with "Torch not compiled with
+REM CUDA enabled" on a CPU-only PyTorch, so ask the installed torch which it is.
+set "COMFY_ARGS="
+"%PYTHON_EXE%" -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
+if errorlevel 1 (
+    set "COMFY_ARGS=--comfy-arg=--cpu"
+    echo   Device:     CPU ^(no usable CUDA in the installed PyTorch^) - generation will be slow
+) else (
+    echo   Device:     CUDA
+)
 echo Starting darask-paint AI Diffusion plugin.
 echo   ComfyUI:    starting on http://127.0.0.1:%COMFY_PORT% (log: %COMFY_LOG%)
 echo   API server: http://%PLUGIN_HOST%:%PLUGIN_PORT%  (darask-paint: "AI seisei / AI chikan (Diffusion)" menus)
@@ -183,7 +193,7 @@ echo The first generation after starting can take a while while ComfyUI loads th
 echo.
 REM Extra arguments to this .bat (e.g. "darask-plugin.bat --checkpoint foo.safetensors")
 REM are forwarded to darask_server.py as-is.
-"%PYTHON_EXE%" "%SCRIPT_DIR%darask_server.py" --port %PLUGIN_PORT% --comfy-port %COMFY_PORT% --comfy-python "%PYTHON_EXE%" --comfy-main "%COMFY_MAIN%" --comfy-log "%COMFY_LOG%" %*
+"%PYTHON_EXE%" "%SCRIPT_DIR%darask_server.py" --port %PLUGIN_PORT% --comfy-port %COMFY_PORT% --comfy-python "%PYTHON_EXE%" --comfy-main "%COMFY_MAIN%" --comfy-log "%COMFY_LOG%" %COMFY_ARGS% %*
 goto :eof
 
 :fail
