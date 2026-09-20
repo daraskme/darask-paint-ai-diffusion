@@ -66,7 +66,49 @@ Krita 本体やこのフォークの Qt 依存コード(`ai_diffusion` パッケ
 (数百MB)+ デフォルトモデル(約 2GB)を合計すると、**CUDA 版で 5〜8GB 程度**の
 ダウンロードが必要です(CPU 版 PyTorch は 1GB 程度と小さいですが、生成が非常に遅くなります)。 |
 
-## 導入手順
+## 導入手順(推奨: zip を置くだけ)
+
+1. [Releases](https://github.com/daraskme/darask-paint-ai-diffusion/releases) の
+   `plugin-vX.Y.Z` から `darask-paint-ai-diffusion-plugin-vX.Y.Z.zip` をダウンロードします
+   (`v1.x` の Release は upstream の Krita プラグインです)。
+2. `darask-paint.exe` と同じ階層に `plugins` フォルダを作り、zip を**そのまま**置きます
+   (展開不要。設定ダイアログ(Ctrl+K)の「プラグインフォルダ」で別の場所を指定することもできます)。
+   ```
+   darask-paint.exe
+   plugins\
+     darask-paint-ai-diffusion-plugin-v1.0.0.zip
+   ```
+3. Darask Paint のメニューから「**AI 生成(Diffusion)…**」または
+   「**AI 置換(Diffusion)…**」(置換は選択範囲が必要)を実行します。
+   - 本体が zip を `plugins\darask-paint-ai-diffusion-plugin-v1.0.0\` に展開し、
+     `darask-plugin.bat` を新しいコンソール窓で起動して、API サーバが応答するまで
+     (最大 2 分)待ちます。
+   - 初回は下記「手動導入」のセットアップ(数分〜数十分)が走るため 2 分を超えます。
+     「起動中」のメッセージが出たら、コンソールでモデルダウンロードの確認に答え、
+     セットアップ完了後にもう一度メニューを実行してください。
+   - zip を新しいバージョンに差し替えると、次回実行時に自動で再展開されます。
+4. プラグインの黒い(コンソール)ウィンドウを閉じると ComfyUI・API サーバの両方が
+   停止します。
+
+### 動作例(Windows, CPU のみ)
+
+| `plugins` フォルダに zip を置く | 起動後のコンソール(CUDA 無し → ComfyUI を `--cpu` で起動) |
+|---|---|
+| ![plugins フォルダの zip](media/darask/plugins-folder.png) | ![プラグインのコンソール](media/darask/plugin-console-cpu.png) |
+
+| 「AI 生成」の結果(CPU, 256×256, 20 steps, 約 150 秒) |
+|---|
+| ![生成結果](media/darask/generated-result.png) |
+
+CPU では 256×256 / 20 steps で 3 分程度かかります(Darask Paint 0.13 は生成応答を最大 600 秒
+待ちます)。
+
+zip を自分で作る場合は `pwsh ./scripts/package_darask_plugin.ps1 -Version plugin-vX.Y.Z`
+を実行します(`plugin-v*` タグを push すると GitHub Actions が同じ zip を Release に
+添付します)。zip には `darask-plugin.bat` / `darask-plugin.json` / `darask_server.py`
+だけが入っており、ComfyUI 等は初回起動時に固定バージョンでインストールされます。
+
+## 導入手順(手動: クローンして起動)
 
 1. このリポジトリをクローンします(サブモジュールは不要です)。
    ```
