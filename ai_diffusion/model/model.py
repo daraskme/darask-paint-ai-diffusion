@@ -197,7 +197,7 @@ class DocumentModel(QObject, ObservableProperties):
                 self.upscale.upscaler = client.models.default_upscaler
 
     def _forward_error(self, error: str):
-        self.report_error(error if error else no_error)
+        self.report_error(error or no_error)
 
     def _forward_validation_error(self, error: str):
         if error:

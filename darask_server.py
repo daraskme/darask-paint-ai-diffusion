@@ -84,7 +84,9 @@ DARASK_PLUGIN_VERSION = "1.52.1"  # tracks the Acly/krita-ai-diffusion fork vers
 API_VERSION = 1
 
 DEFAULT_PORT = 8424
-DEFAULT_HOST = "127.0.0.1"  # never configurable: darask-paint only ever talks to localhost (spec 55.1)
+DEFAULT_HOST = (
+    "127.0.0.1"  # never configurable: darask-paint only ever talks to localhost (spec 55.1)
+)
 
 MAX_IMAGE_DIM = 8192
 MAX_TOTAL_PIXELS = MAX_IMAGE_DIM * MAX_IMAGE_DIM
@@ -96,11 +98,15 @@ MAX_PROMPT_LEN = 4000
 DEFAULT_GENERATION_TIMEOUT = 300.0  # seconds, wall clock budget for one generate/inpaint call
 COMFY_STARTUP_GRACE = 180.0  # seconds we report "starting" instead of "error" while Comfy boots
 COMFY_POLL_INTERVAL = 0.5
-COMFY_JSON_MAX_BYTES = 16 * 1024 * 1024  # cap on JSON responses from ComfyUI (/prompt, /history, ...)
+COMFY_JSON_MAX_BYTES = (
+    16 * 1024 * 1024
+)  # cap on JSON responses from ComfyUI (/prompt, /history, ...)
 COMFY_IMAGE_MAX_BYTES = 128 * 1024 * 1024  # cap on binary image responses from ComfyUI (/view)
 COMFY_DEFAULT_OP_TIMEOUT = 10.0
 
-LOCK_WAIT_TIMEOUT = 1.0  # fail fast on busy; single-flight is darask-paint's responsibility (spec 55.1)
+LOCK_WAIT_TIMEOUT = (
+    1.0  # fail fast on busy; single-flight is darask-paint's responsibility (spec 55.1)
+)
 SOCKET_READ_TIMEOUT = 30.0  # Slowloris defense: per-recv timeout on accepted connections
 DEFAULT_MAX_CONCURRENT_HANDLERS = 8  # thread-exhaustion defense
 
@@ -196,13 +202,17 @@ def png_decode(data: bytes) -> tuple[int, int, int, bytearray]:
     _tag, ihdr = chunks[0]
     if len(ihdr) < 13:
         raise PngError("Malformed IHDR")
-    width, height, bit_depth, color_type, _comp, _filt, interlace = struct.unpack(">IIBBBBB", ihdr[:13])
+    width, height, bit_depth, color_type, _comp, _filt, interlace = struct.unpack(
+        ">IIBBBBB", ihdr[:13]
+    )
     if width <= 0 or height <= 0:
         raise PngError("Invalid PNG dimensions")
     if bit_depth != 8:
         raise PngError(f"Unsupported PNG bit depth: {bit_depth} (only 8-bit is supported)")
     if color_type not in _PNG_CHANNELS:
-        raise PngError(f"Unsupported PNG color type: {color_type} (palette images are not supported)")
+        raise PngError(
+            f"Unsupported PNG color type: {color_type} (palette images are not supported)"
+        )
     if interlace != 0:
         raise PngError("Interlaced PNG images are not supported")
 
@@ -436,7 +446,9 @@ def validate_extent(width: int, height: int) -> None:
         if not isinstance(value, int) or isinstance(value, bool):
             raise ApiError(HTTPStatus.BAD_REQUEST, f"'{name}' must be an integer")
         if value <= 0 or value > MAX_IMAGE_DIM:
-            raise ApiError(HTTPStatus.BAD_REQUEST, f"'{name}' must be between 1 and {MAX_IMAGE_DIM}")
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST, f"'{name}' must be between 1 and {MAX_IMAGE_DIM}"
+            )
     if width * height > MAX_TOTAL_PIXELS:
         raise ApiError(HTTPStatus.BAD_REQUEST, f"width*height must not exceed {MAX_TOTAL_PIXELS}")
 
@@ -447,7 +459,9 @@ def validate_padded_extent(width: int, height: int) -> None:
         raise ApiError(HTTPStatus.BAD_REQUEST, "Padded image size exceeds server limits")
 
 
-def require_str(body: dict, name: str, *, required: bool, default: str = "", max_len: int = MAX_PROMPT_LEN) -> str:
+def require_str(
+    body: dict, name: str, *, required: bool, default: str = "", max_len: int = MAX_PROMPT_LEN
+) -> str:
     if name not in body or body[name] is None:
         if required:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"'{name}' is required")
@@ -471,7 +485,9 @@ def optional_int(body: dict, name: str, *, minimum: int, maximum: int) -> int | 
     return value
 
 
-def optional_float(body: dict, name: str, *, minimum: float, maximum: float, default: float) -> float:
+def optional_float(
+    body: dict, name: str, *, minimum: float, maximum: float, default: float
+) -> float:
     if name not in body or body[name] is None:
         return default
     value = body[name]
@@ -562,12 +578,16 @@ class ComfyClient:
 
     def system_stats(self, timeout: float = 5.0) -> dict:
         try:
-            return strict_json_loads(self._request("GET", "/system_stats", timeout=timeout).decode("utf-8"))
+            return strict_json_loads(
+                self._request("GET", "/system_stats", timeout=timeout).decode("utf-8")
+            )
         except (ComfyError, ValueError):
             return {}
 
     def object_info(self, node_class: str, deadline: float) -> dict:
-        raw = self._request("GET", f"/object_info/{node_class}", timeout=self._budget(deadline, 10.0))
+        raw = self._request(
+            "GET", f"/object_info/{node_class}", timeout=self._budget(deadline, 10.0)
+        )
         try:
             return strict_json_loads(raw.decode("utf-8"))
         except ValueError as e:
@@ -597,7 +617,9 @@ class ComfyClient:
 
         add_field("overwrite", "true")
         body.extend(f"--{boundary}\r\n".encode())
-        body.extend(f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'.encode())
+        body.extend(
+            f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'.encode()
+        )
         body.extend(b"Content-Type: image/png\r\n\r\n")
         body.extend(png_bytes)
         body.extend(b"\r\n")
@@ -667,15 +689,25 @@ class ComfyClient:
                     try:
                         filename = img["filename"]
                     except (KeyError, TypeError) as e:
-                        raise ComfyError(f"ComfyUI history entry missing image filename: {e}") from e
+                        raise ComfyError(
+                            f"ComfyUI history entry missing image filename: {e}"
+                        ) from e
                     subfolder = img.get("subfolder", "")
                     type_ = img.get("type", "output")
-                    png_bytes = self.fetch_image(filename, subfolder, type_, expected_w, expected_h, deadline)
+                    png_bytes = self.fetch_image(
+                        filename, subfolder, type_, expected_w, expected_h, deadline
+                    )
                     return png_bytes, filename, subfolder, type_
             time.sleep(min(COMFY_POLL_INTERVAL, max(0.0, self.remaining(deadline))))
 
     def fetch_image(
-        self, filename: str, subfolder: str, type_: str, expected_w: int, expected_h: int, deadline: float
+        self,
+        filename: str,
+        subfolder: str,
+        type_: str,
+        expected_w: int,
+        expected_h: int,
+        deadline: float,
     ) -> bytes:
         query = urlencode({"filename": filename, "subfolder": subfolder, "type": type_})
         data = self._request(
@@ -710,7 +742,11 @@ class ComfyClient:
         try:
             payload = json.dumps({"delete": [prompt_id]}).encode()
             self._request(
-                "POST", "/queue", data=payload, headers={"Content-Type": "application/json"}, timeout=5.0
+                "POST",
+                "/queue",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=5.0,
             )
         except ComfyError:
             pass
@@ -1020,12 +1056,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Transfer-Encoding") is not None:
             raise ApiError(HTTPStatus.BAD_REQUEST, "Chunked transfer encoding is not supported")
         if len(self.headers.get_all("Content-Length") or []) > 1:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "Duplicate Content-Length headers are not allowed")
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST, "Duplicate Content-Length headers are not allowed"
+            )
 
     def _read_json_body(self) -> dict:
         content_type = self.headers.get("Content-Type", "")
         if content_type.split(";")[0].strip().lower() != "application/json":
-            raise ApiError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Content-Type must be application/json")
+            raise ApiError(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Content-Type must be application/json"
+            )
 
         length_header = self.headers.get("Content-Length")
         if length_header is None:
@@ -1042,7 +1082,9 @@ class Handler(BaseHTTPRequestHandler):
         while remaining > 0:
             chunk = self.rfile.read(min(remaining, 1024 * 1024))
             if not chunk:
-                raise ApiError(HTTPStatus.BAD_REQUEST, "Connection closed before body was fully sent")
+                raise ApiError(
+                    HTTPStatus.BAD_REQUEST, "Connection closed before body was fully sent"
+                )
             chunks.append(chunk)
             remaining -= len(chunk)
         raw = b"".join(chunks)
@@ -1129,7 +1171,9 @@ class Handler(BaseHTTPRequestHandler):
             model = ctx.comfy.select_checkpoint(ctx.requested_checkpoint, deadline)
             if model is None and ctx.requested_checkpoint is not None:
                 backend = "error"
-                detail = f"Requested checkpoint '{ctx.requested_checkpoint}' is not installed in ComfyUI"
+                detail = (
+                    f"Requested checkpoint '{ctx.requested_checkpoint}' is not installed in ComfyUI"
+                )
 
         payload = {
             "plugin": DARASK_PLUGIN_NAME,
@@ -1162,7 +1206,9 @@ class Handler(BaseHTTPRequestHandler):
         checkpoint = ctx.comfy.select_checkpoint(ctx.requested_checkpoint, deadline)
         if checkpoint is None:
             if ctx.requested_checkpoint is not None:
-                raise ComfyBusyError(f"Requested checkpoint '{ctx.requested_checkpoint}' is not installed")
+                raise ComfyBusyError(
+                    f"Requested checkpoint '{ctx.requested_checkpoint}' is not installed"
+                )
             raise ComfyBusyError("No checkpoint model is installed in ComfyUI")
         return checkpoint
 
@@ -1190,7 +1236,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._wait_for_backend(ctx, deadline)
             checkpoint = self._resolve_checkpoint(ctx, deadline)
-            graph, output_node = build_txt2img_graph(checkpoint, prompt, negative, padded_w, padded_h, seed)
+            graph, output_node = build_txt2img_graph(
+                checkpoint, prompt, negative, padded_w, padded_h, seed
+            )
             prompt_id = ctx.comfy.queue_prompt(graph, deadline)
             png_bytes, out_name, out_subfolder, out_type = ctx.comfy.wait_for_result(
                 prompt_id, output_node, padded_w, padded_h, deadline
@@ -1225,7 +1273,9 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.BAD_REQUEST, str(e)) from None
         validate_extent(image_w, image_h)
         if (image_w, image_h) != (mask_w, mask_h):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "'image' and 'mask' must have the same dimensions")
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST, "'image' and 'mask' must have the same dimensions"
+            )
 
         padded_w, padded_h = next_multiple_of_8(image_w), next_multiple_of_8(image_h)
         validate_padded_extent(padded_w, padded_h)
@@ -1250,7 +1300,9 @@ class Handler(BaseHTTPRequestHandler):
             checkpoint = self._resolve_checkpoint(ctx, deadline)
             image_ref = ctx.comfy.upload_image(f"darask_{uuid4().hex}.png", image_bytes, deadline)
             cleanup_refs.append(("input", image_ref))
-            mask_ref = ctx.comfy.upload_image(f"darask_{uuid4().hex}_mask.png", mask_bytes, deadline)
+            mask_ref = ctx.comfy.upload_image(
+                f"darask_{uuid4().hex}_mask.png", mask_bytes, deadline
+            )
             cleanup_refs.append(("input", mask_ref))
             graph, output_node = build_inpaint_graph(
                 checkpoint, image_ref, mask_ref, prompt, negative, strength, seed
@@ -1259,7 +1311,10 @@ class Handler(BaseHTTPRequestHandler):
             png_bytes, out_name, out_subfolder, out_type = ctx.comfy.wait_for_result(
                 prompt_id, output_node, padded_w, padded_h, deadline
             )
-            cleanup_refs.append((out_type, f"{out_subfolder}/{out_name}" if out_subfolder else out_name))
+            cleanup_refs.append((
+                out_type,
+                f"{out_subfolder}/{out_name}" if out_subfolder else out_name,
+            ))
             if (padded_w, padded_h) != (image_w, image_h):
                 png_bytes = png_crop_to(png_bytes, image_w, image_h)
             self._send_png(png_bytes)
@@ -1345,17 +1400,31 @@ def validate_comfy_url(url: str) -> str:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Darask Paint AI Diffusion plugin server")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on (127.0.0.1 only)")
     parser.add_argument(
-        "--comfy-url", default="http://127.0.0.1:8188", help="Base URL of the ComfyUI HTTP API to use"
+        "--port", type=int, default=DEFAULT_PORT, help="Port to listen on (127.0.0.1 only)"
     )
-    parser.add_argument("--comfy-port", type=int, default=8188, help="Port used when launching ComfyUI ourselves")
     parser.add_argument(
-        "--comfy-python", type=Path, default=None, help="Path to the ComfyUI venv's python.exe (optional)"
+        "--comfy-url",
+        default="http://127.0.0.1:8188",
+        help="Base URL of the ComfyUI HTTP API to use",
     )
-    parser.add_argument("--comfy-main", type=Path, default=None, help="Path to ComfyUI's main.py (optional)")
     parser.add_argument(
-        "--comfy-log", type=Path, default=None, help="File to redirect the managed ComfyUI's output to"
+        "--comfy-port", type=int, default=8188, help="Port used when launching ComfyUI ourselves"
+    )
+    parser.add_argument(
+        "--comfy-python",
+        type=Path,
+        default=None,
+        help="Path to the ComfyUI venv's python.exe (optional)",
+    )
+    parser.add_argument(
+        "--comfy-main", type=Path, default=None, help="Path to ComfyUI's main.py (optional)"
+    )
+    parser.add_argument(
+        "--comfy-log",
+        type=Path,
+        default=None,
+        help="File to redirect the managed ComfyUI's output to",
     )
     parser.add_argument(
         "--comfy-arg",
@@ -1440,7 +1509,9 @@ def main(argv: list[str] | None = None) -> NoReturn:
     if comfy_manager.owns_process:
         comfy_manager.start()
 
-    httpd = Server((DEFAULT_HOST, args.port), Handler, ctx, max_concurrent_handlers=args.max_concurrent)
+    httpd = Server(
+        (DEFAULT_HOST, args.port), Handler, ctx, max_concurrent_handlers=args.max_concurrent
+    )
     log.info("darask-ai-diffusion server listening on http://%s:%d", DEFAULT_HOST, args.port)
     log.info("Talking to ComfyUI at %s", comfy_url)
     try:

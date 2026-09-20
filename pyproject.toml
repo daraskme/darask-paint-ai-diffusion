@@ -18,7 +18,26 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-ignore = ["E741", "EXE001", "BLE001", "SIM102", "T100", "TRY300"]
+ignore = [
+    "E741",
+    "EXE001",
+    "BLE001",
+    "SIM102",
+    "T100",
+    "TRY300",
+    # Preview rules enabled by default in newer ruff; stylistic or false-positive heavy for this codebase.
+    "ASYNC240", # blocking pathlib calls in async functions (cheap local fs checks)
+    "B027",     # empty methods in abstract base class without @abstractmethod
+    "FURB113",  # repeated list.append
+    "FURB148",  # unnecessary enumerate
+    "FURB171",  # single-item membership test
+    "ISC004",   # implicit string concatenation in collection literal
+    "PLW0108",  # unnecessary lambda (Qt signal connections)
+    "RUF027",   # possible f-string without prefix ("{prompt}" placeholders are intentional)
+    "RUF036",   # None not at end of union
+    "RUF069",   # float equality comparison
+    "SIM115",   # open() without context manager (long-lived log handle)
+]
 
 [tool.ruff.format]
 docstring-code-format = false
