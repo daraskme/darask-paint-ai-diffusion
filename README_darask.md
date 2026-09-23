@@ -185,3 +185,38 @@ zip を自分で作る場合は `pwsh ./scripts/package_darask_plugin.ps1 -Versi
 GPL-3.0(フォーク元 [Acly/krita-ai-diffusion](https://github.com/Acly/krita-ai-diffusion)
 に準拠。`LICENSE` 参照)。エンジンの [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 は GPL-3.0、デフォルトでダウンロードするモデルはそれぞれの配布元のライセンスに従います。
+
+## NixOS / Linux
+
+このリポジトリを clone したディレクトリで `nix run .` を実行してください
+(`nix-command` / `flakes` が必要です)。`bash darask-plugin.sh` でも NixOS を検出して Nix 環境へ入ります。
+対応アーキテクチャは x86_64-linux です。Windows の `darask-plugin.bat` は従来どおり使えます。
+
+Nix の Python 3.12 を使用し、一般 Linux 用 Python バイナリの自動ダウンロードを無効にしています。
+PyTorch / OpenCV 等が必要とする共有ライブラリもランチャーの Nix 環境へ含めています。
+初回の Python 依存・モデルの取得にはインターネット接続が必要です。
+`nix build` はランチャーをビルドし、AI モデルの取得は実行時に行います。
+PyTorch は 2.11.0 / torchvision は 0.26.0 に固定、その他の推移的 Python 依存は初回導入時に解決します。
+
+```sh
+nix run .                       # CPU (既定)
+DARASK_TORCH_BACKEND=cu128 nix run .  # CUDA 12.8 対応 NVIDIA ドライバーが必要
+nix run . -- --setup-only        # 依存を準備して終了
+nix flake check                  # ランチャーの静的検証
+```
+
+保存先は `${XDG_DATA_HOME:-$HOME/.local/share}/darask-paint-ai-diffusion` です。
+空・相対パスの XDG_DATA_HOME は既定値に戻します。`DARASK_DATA_DIR` で保存先を変更できます。
+`/nix/store` 内に環境やモデルを作りません。CPU / CUDA の切替時は環境を作り直します。
+同じ保存先に対する重複起動・重複セットアップをファイルロックで防ぎます。
+起動を終えるには端末で Ctrl+C を押してください。
+
+NixOS 対応版の Darask Paint は manifest の `launcherLinux` を使ってこのランチャーを起動します。
+配布 ZIP を `~/.local/share/darask-paint/plugins` (または本体の設定で指定したフォルダ) に置く方法も使えます。
+Linux からの ZIP 作成は `python3 package-plugin.py`、Windows は既存の PowerShell パッケージスクリプトです。
+ZIP には Windows / Linux 両方のランチャーと flake.lock を同梱します。
+
+チェックポイントは保存先の `models/checkpoints` に置いてください。初回起動時に DreamShaper 8
+(SD1.5、約 2 GB) のダウンロード確認を表示します。`DARASK_DOWNLOAD_MODEL=1` で取得、`=0` で
+スキップできます。モデルは ComfyUI のバージョン別ソースと分けて保存するため更新時も保持します。
+生成・置換は CPU では時間がかかります。`--checkpoint` 等の引数は既存の HTTP アダプターへ渡します。

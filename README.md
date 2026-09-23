@@ -1,3 +1,5 @@
+Darask Paint の NixOS 対応・起動方法は [README_darask.md](README_darask.md#nixos--linux) を参照してください。
+
 > **[Darask Paint](https://github.com/daraskme/darask-paint) 用プラグインとして使う場合は [README_darask.md](README_darask.md) を参照してください。**
 > このフォークは Krita 版に加えて、Darask Paint 向けのヘッドレス API サーバ (`darask_server.py`) を提供します。
 
