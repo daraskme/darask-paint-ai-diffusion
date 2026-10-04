@@ -18,6 +18,9 @@ param(
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $files = @{
+    "darask-plugin.sh" = "darask-plugin.sh"
+    "flake.nix" = "flake.nix"
+    "flake.lock" = "flake.lock"
     "darask-plugin.bat"  = "darask-plugin.bat"
     "darask-plugin.json" = "darask-plugin.json"
     "darask_server.py"   = "darask_server.py"

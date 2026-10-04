@@ -28,3 +28,6 @@ lib
 pyvenv.cfg
 # darask-paint plugin zip (scripts/package_darask_plugin.ps1)
 dist/
+
+# Nix build outputs
+/result*

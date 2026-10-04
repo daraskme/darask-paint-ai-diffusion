@@ -18,5 +18,6 @@
     "runtime": "https://github.com/comfyanonymous/ComfyUI",
     "license": "GPL-3.0"
   },
-  "license": "GPL-3.0"
+  "license": "GPL-3.0",
+  "launcherLinux": "darask-plugin.sh"
 }
